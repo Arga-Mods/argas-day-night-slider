@@ -6,7 +6,9 @@ By default, the slider docks to the bottom-left of the Active Players window, bu
 
 When the UI scaling is changed, the slider adapts automatically. It does not fade out, so you always have the current canvas brightness at a glance.
 
-![Day-Night Slider](screenshots/slider.png)
+<p align="center">
+  <img src="screenshots/slider.png" alt="Day-Night Slider">
+</p>
 
 
 ## Features in Detail
