@@ -1,6 +1,6 @@
 # Arga's Day-Night Slider
 
-This is a system-agnostic, very lightweight GM module (under 40 KB) for quick and easy adjustment of canvas brightness.
+This is a system-agnostic, very lightweight GM module (under 45 KB) for quick and easy adjustment of canvas brightness.
 
 By default, the slider docks to the bottom-left of the Active Players window, but it can be freely repositioned by simply dragging it anywhere on screen. The module remembers the new position.
 
