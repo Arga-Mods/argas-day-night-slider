@@ -1,0 +1,11 @@
+
+Features in Detail:
+    • Clicking the sun or moon icon instantly sets maximum brightness or darkness, respectively.
+    • For custom brightness levels, the slider handle can be grabbed and moved with the left mouse button.
+    • While the cursor is hovering over the slider area, brightness can also be adjusted using the scroll wheel:
+        ◦ SCROLL WHEEL: Steps of 1/100 (i.e. 1% increments for smooth adjustments)
+        ◦ CTRL+SCROLL: Steps of 1/300 (for subtle, creeping changes your players will barely notice)
+        ◦ SHIFT+SCROLL: Steps of 1/12 (i.e. 12 scroll steps = 12 hours)
+    • Repositioning: When the cursor approaches the slider, a drag handle (three dots) appears above it. When dragged to a new position, the slider will try to snap to nearby screen edges or the hotbar, but can also be placed freely. Moving the slider back near the Players window triggers a wiggle animation to indicate the correct docking position. Regardless of the slider's current position, double-clicking the drag handle will snap it back to the Players window.
+
+    Enjoy - Arga
