@@ -6,7 +6,7 @@ By default, the slider docks to the bottom-left of the Active Players window, bu
 
 When the UI scaling is changed, the slider adapts automatically. It does not fade out, so you always have the current canvas brightness at a glance.
 
-![Day-Night Slider](https://raw.githubusercontent.com/Arga-Mods/argas-day-night-slider/main/screenshots/slider.webp)
+![Day-Night Slider](https://raw.githubusercontent.com/Arga-Mods/argas-day-night-slider/main/screenshots/slider.png)
 
 
 ## Features in Detail
