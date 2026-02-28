@@ -13,8 +13,8 @@
     "bugs": "https://github.com/Arga-Mods/argas-day-night-slider/issues",
     "changelog": "https://github.com/Arga-Mods/argas-day-night-slider/releases",
     "readme": "https://github.com/Arga-Mods/argas-day-night-slider/blob/main/README.md",
-    "manifest": "https://raw.githubusercontent.com/Arga-Mods/argas-day-night-slider/main/module.json",
-    "download": "https://github.com/Arga-Mods/argas-day-night-slider/releases/download/v13.0.1/argas-day-night-slider.zip",
+    "manifest": "https://github.com/Arga-Mods/argas-day-night-slider/releases/latest/download/module.json",
+    "download": "https://github.com/Arga-Mods/argas-day-night-slider/releases/download/13.0.1/argas-day-night-slider.zip",
     "compatibility": {
         "minimum": "13",
         "verified": "13",
