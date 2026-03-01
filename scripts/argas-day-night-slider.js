@@ -8,6 +8,8 @@ let wrapperElement = null;
 let spacerElement = null;
 
 let _resizeObserver = null;
+let _sidebarObserver = null;
+let _sceneNavObserver = null;
 let _mutationObserver = null;
 let _debounceTimer = null;
 let _uiScaleEl = null;
@@ -25,6 +27,14 @@ function cleanupListenersAndObservers() {
     _resizeObserver.disconnect();
     _resizeObserver = null;
   }
+  if (_sidebarObserver) {
+    _sidebarObserver.disconnect();
+    _sidebarObserver = null;
+  }
+  if (_sceneNavObserver) {
+    _sceneNavObserver.disconnect();
+    _sceneNavObserver = null;
+  }
   if (_mutationObserver) {
     _mutationObserver.disconnect();
     _mutationObserver = null;
@@ -38,7 +48,9 @@ function cleanupListenersAndObservers() {
 function applyUiScale() {
   if (!_uiScaleEl || !wrapperElement) return;
   const scale = parseFloat(getComputedStyle(_uiScaleEl).getPropertyValue('--ui-scale')) || 1;
-  wrapperElement.style.transformOrigin = 'left bottom';
+  if (!wrapperElement.style.transformOrigin) {
+    wrapperElement.style.transformOrigin = 'left bottom';
+  }
   wrapperElement.style.transform = `scale(${scale})`;
 }
 
@@ -67,6 +79,14 @@ Hooks.once('init', () => {
     default: true
   });
 
+  game.settings.register(MODULE_ID, 'pinTarget', {
+    name: 'Pin Target',
+    scope: 'client',
+    config: false,
+    type: String,
+    default: 'players'
+  });
+
   // Inject CSS once; it never changes between scenes.
   const style = document.createElement('style');
   style.dataset.darknessStyle = 'true';
@@ -77,12 +97,16 @@ Hooks.once('init', () => {
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 4px 18px 13px 5px;
+      padding: 4px 8px 13px 5px;
       user-select: none;
+      min-width: max-content;
     }
     .dns-wrapper.dns-dragging { opacity: 0.85; }
+    .dns-wrapper.dns-jiggling .dns-container {
+      animation: dns-jiggle 0.2s infinite;
+    }
     .dns-handle {
-      width: 24px; height: 10px; margin-bottom: 2px;
+      width: 24px; height: 10px; margin-bottom: 8px;
       background: radial-gradient(circle, #aaa 1.5px, transparent 1.5px);
       background-size: 8px 8px; background-position: center;
       border-radius: 3px; opacity: 0;
@@ -188,6 +212,7 @@ Hooks.on('updateScene', (scene, changes) => {
 const handlePlayersRender = () => {
   try {
     if (!game.settings.get(MODULE_ID, 'pinned')) return;
+    if (game.settings.get(MODULE_ID, 'pinTarget') !== 'players') return;
     ensureSpacerInFlow();
     syncWrapperToSpacer();
     const pl = document.getElementById('players');
@@ -202,6 +227,18 @@ const handlePlayersRender = () => {
 
 Hooks.on('renderPlayers', handlePlayersRender);
 Hooks.on('renderPlayerList', handlePlayersRender);
+
+const handleSceneNavRender = () => {
+  try {
+    if (!game.settings.get(MODULE_ID, 'pinned')) return;
+    if (game.settings.get(MODULE_ID, 'pinTarget') !== 'scene') return;
+    syncWrapperToSceneAnchor();
+  } catch (e) {
+    console.warn(`${MODULE_ID} | Scene nav render handler failed:`, e);
+  }
+};
+
+Hooks.on('renderSceneNavigation', handleSceneNavRender);
 
 function getPlayersPinAnchor() {
   const inactive = document.getElementById('players-inactive');
@@ -233,21 +270,38 @@ function syncWrapperToSpacer() {
   wrapperElement.style.left = `${sr.left}px`;
   wrapperElement.style.top = '';
   wrapperElement.style.bottom = `${window.innerHeight - sr.top}px`;
+  wrapperElement.style.transformOrigin = 'left bottom';
 }
 
-function pinApp() {
-  if (!wrapperElement || !spacerElement) return false;
+function syncWrapperToSceneAnchor() {
+  if (!wrapperElement) return;
+  const anchor = getScenePinAnchor();
+  if (!anchor) return;
 
-  const anchor = getPlayersPinAnchor();
-  if (!anchor) return false;
+  const ar = anchor.getBoundingClientRect();
+  wrapperElement.style.left = `${ar.left}px`;
+  wrapperElement.style.top = `${ar.bottom}px`;
+  wrapperElement.style.bottom = '';
+  wrapperElement.style.transformOrigin = 'left top';
+}
 
-  ensureSpacerInFlow();
+function pinApp(target = 'players') {
+  if (!wrapperElement) return false;
 
   if (wrapperElement.parentElement !== document.body) {
     document.body.appendChild(wrapperElement);
   }
   wrapperElement.classList.add('dns-pinned');
-  syncWrapperToSpacer();
+
+  if (target === 'scene') {
+    syncWrapperToSceneAnchor();
+  } else {
+    if (!spacerElement) return false;
+    const anchor = getPlayersPinAnchor();
+    if (!anchor) return false;
+    ensureSpacerInFlow();
+    syncWrapperToSpacer();
+  }
 
   return true;
 }
@@ -264,21 +318,41 @@ function unPinApp() {
   wrapperElement.style.left = `${rect.left}px`;
   wrapperElement.style.top = `${rect.top - wrapperElement.offsetHeight * (1 - scale)}px`;
   wrapperElement.style.bottom = '';
+  wrapperElement.style.transformOrigin = 'left bottom';
 
   return true;
 }
 
-function computePinZone(clientX, clientY) {
-  const anchor = getPlayersPinAnchor();
-  if (!anchor) return false;
+function getScenePinAnchor() {
+  const nav = document.getElementById('scene-navigation');
+  if (nav?.classList.contains('expanded')) {
+    const inactive = document.getElementById('scene-navigation-inactive');
+    const lastLi = inactive?.querySelector('li:last-child');
+    if (lastLi) return lastLi;
+  }
+  return document.getElementById('scene-navigation-active');
+}
 
-  const rect = anchor.getBoundingClientRect();
-  return (
-    clientX > rect.left &&
-    clientX < rect.left + rect.width &&
-    clientY > rect.top - 80 &&
-    clientY < rect.top + 80
-  );
+function computePinZone(clientX, clientY) {
+  const playersAnchor = getPlayersPinAnchor();
+  if (playersAnchor) {
+    const rect = playersAnchor.getBoundingClientRect();
+    if (clientX > rect.left && clientX < rect.left + rect.width &&
+        clientY > rect.top - 80 && clientY < rect.top + 80) {
+      return 'players';
+    }
+  }
+
+  const sceneAnchor = getScenePinAnchor();
+  if (sceneAnchor) {
+    const rect = sceneAnchor.getBoundingClientRect();
+    if (clientX > rect.left - 40 && clientX < rect.right + 40 &&
+        clientY > rect.bottom - 40 && clientY < rect.bottom + 80) {
+      return 'scene';
+    }
+  }
+
+  return false;
 }
 
 function getSnapTargets() {
@@ -315,10 +389,29 @@ function snapPosition(x, y, wrapperW, wrapperH) {
   let sx = x, sy = y;
   let bestDx = SNAP_THRESHOLD, bestDy = SNAP_THRESHOLD;
 
-  if (Math.abs(x - 15) < SNAP_THRESHOLD)              { sx = 15; bestDx = 0; }
+  const uiScale = parseFloat(
+    getComputedStyle(_uiScaleEl || document.documentElement)
+      .getPropertyValue('--ui-scale')
+  ) || 1;
+  const leftMargin = 15 * uiScale;
+
+  if (Math.abs(x - leftMargin) < SNAP_THRESHOLD)       { sx = leftMargin; bestDx = 0; }
   if (Math.abs(x + wrapperW - vw) < SNAP_THRESHOLD)  { sx = vw - wrapperW; bestDx = 0; }
   if (Math.abs(y) < SNAP_THRESHOLD)                   { sy = 0; bestDy = 0; }
   if (Math.abs(y + wrapperH - vh) < SNAP_THRESHOLD)   { sy = vh - wrapperH; bestDy = 0; }
+
+  // Snap line: right edge of left toolbar (column 2), top half of screen
+  if (y + wrapperH > 0 && y < vh / 2) {
+    const col2 = document.getElementById('ui-left-column-2')
+      || document.getElementById('ui-left-column-1');
+    if (col2) {
+      const lineX = col2.getBoundingClientRect().right + 15 * uiScale;
+      const distLeft  = Math.abs(x - lineX);
+      const distRight = Math.abs(x + wrapperW - lineX);
+      if (distLeft < bestDx)  { bestDx = distLeft;  sx = lineX; }
+      if (distRight < bestDx) { bestDx = distRight; sx = lineX - wrapperW; }
+    }
+  }
 
   for (const t of targets) {
     const overlapH = rangesOverlap(y, y + wrapperH, t.top, t.bottom);
@@ -365,7 +458,7 @@ function createDayNightSlider() {
 
   const wrapper = document.createElement('div');
   wrapper.dataset.darknessWrapper = 'true';
-  wrapper.classList.add('dns-wrapper');
+  wrapper.classList.add('dns-wrapper', 'faded-ui');
   wrapperElement = wrapper;
 
   const handle = document.createElement('div');
@@ -463,12 +556,16 @@ function createDayNightSlider() {
   let dragOffsetX = 0;
   let dragOffsetY = 0;
   let wasPinnedAtStart = false;
+  let wasPinTargetAtStart = 'players';
   let hasUnpinnedOnThisDrag = false;
   let inPinZone = false;
+  let _dragCaptureTarget = null;
 
-  handle.addEventListener('pointerdown', (ev) => {
+  function startDrag(ev, captureTarget) {
     isDragging = true;
+    _dragCaptureTarget = captureTarget;
     wasPinnedAtStart = wrapper.classList.contains('dns-pinned');
+    try { wasPinTargetAtStart = game.settings.get(MODULE_ID, 'pinTarget'); } catch (_) {}
     hasUnpinnedOnThisDrag = false;
     inPinZone = false;
 
@@ -476,12 +573,13 @@ function createDayNightSlider() {
     dragOffsetX = ev.clientX - rect.left;
     dragOffsetY = ev.clientY - rect.top;
 
-    try { handle.setPointerCapture(ev.pointerId); } catch (_) { /* ignored */ }
+    try { captureTarget.setPointerCapture(ev.pointerId); } catch (_) { /* ignored */ }
     wrapper.classList.add('dns-dragging');
+    wrapper.style.cursor = 'grabbing';
     ev.preventDefault();
-  });
+  }
 
-  handle.addEventListener('pointermove', (ev) => {
+  function onDragMove(ev) {
     if (!isDragging) return;
 
     if (wasPinnedAtStart && !hasUnpinnedOnThisDrag) {
@@ -498,33 +596,45 @@ function createDayNightSlider() {
     inPinZone = computePinZone(ev.clientX, ev.clientY);
 
     if (inPinZone) {
-      syncWrapperToSpacer();
-      wrapper.style.animation = 'dns-jiggle 0.2s infinite';
+      if (inPinZone === 'scene') {
+        syncWrapperToSceneAnchor();
+      } else {
+        syncWrapperToSpacer();
+      }
+      applyUiScale();
+      wrapper.classList.add('dns-jiggling');
     } else {
       const wRect = wrapper.getBoundingClientRect();
       const scale = wrapper.offsetHeight
         ? (wRect.height / wrapper.offsetHeight)
         : 1;
       const snapped = snapPosition(rawX, rawY, wRect.width, wRect.height);
-      wrapper.style.left = `${snapped.x}px`;
-      wrapper.style.top  = `${snapped.y - wrapper.offsetHeight * (1 - scale)}px`;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const clampedX = Math.max(15 * scale, Math.min(snapped.x, vw - wRect.width));
+      const clampedY = Math.max(0, Math.min(snapped.y, vh - wRect.height));
+      wrapper.style.left = `${clampedX}px`;
+      wrapper.style.top  = `${clampedY - wrapper.offsetHeight * (1 - scale)}px`;
       wrapper.style.bottom = '';
-      wrapper.style.animation = '';
+      wrapper.classList.remove('dns-jiggling');
     }
-  });
+  }
 
-  handle.addEventListener('pointerup', async (ev) => {
+  async function onDragEnd(ev) {
     if (!isDragging) return;
     isDragging = false;
     wrapper.classList.remove('dns-dragging');
-    wrapper.style.animation = '';
+    wrapper.style.cursor = '';
+    wrapper.classList.remove('dns-jiggling');
 
     const droppedInPinZone = computePinZone(ev.clientX, ev.clientY) || inPinZone;
 
     try {
       if (droppedInPinZone) {
-        pinApp();
+        const target = typeof droppedInPinZone === 'string' ? droppedInPinZone : 'players';
+        pinApp(target);
         await game.settings.set(MODULE_ID, 'pinned', true);
+        await game.settings.set(MODULE_ID, 'pinTarget', target);
         await game.settings.set(MODULE_ID, 'position', { x: null, y: null });
       } else {
         const rect = wrapper.getBoundingClientRect();
@@ -537,29 +647,20 @@ function createDayNightSlider() {
     } catch (e) {
       console.warn(`${MODULE_ID} | Failed to save position:`, e);
     }
-  });
+  }
 
-  handle.addEventListener('dblclick', async () => {
-    pinApp();
-    applyUiScale();
-    try {
-      await game.settings.set(MODULE_ID, 'pinned', true);
-      await game.settings.set(MODULE_ID, 'position', { x: null, y: null });
-    } catch (e) {
-      console.warn(`${MODULE_ID} | Failed to save pin state:`, e);
-    }
-  });
-
-  handle.addEventListener('lostpointercapture', async () => {
+  async function onDragLost() {
     if (!isDragging) return;
     isDragging = false;
     wrapper.classList.remove('dns-dragging');
-    wrapper.style.animation = '';
+    wrapper.style.cursor = '';
+    wrapper.classList.remove('dns-jiggling');
 
     try {
       if (wasPinnedAtStart) {
-        pinApp();
+        pinApp(wasPinTargetAtStart);
         await game.settings.set(MODULE_ID, 'pinned', true);
+        await game.settings.set(MODULE_ID, 'pinTarget', wasPinTargetAtStart);
         await game.settings.set(MODULE_ID, 'position', { x: null, y: null });
       } else {
         const rect = wrapper.getBoundingClientRect();
@@ -572,6 +673,39 @@ function createDayNightSlider() {
     } catch (e) {
       console.warn(`${MODULE_ID} | Failed to save position after capture loss:`, e);
     }
+  }
+
+  // Left-click drag on handle
+  handle.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 0) return;
+    startDrag(ev, handle);
+  });
+  handle.addEventListener('pointermove', onDragMove);
+  handle.addEventListener('pointerup', onDragEnd);
+  handle.addEventListener('lostpointercapture', onDragLost);
+
+  // Right-click drag anywhere on wrapper
+  wrapper.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 2) return;
+    startDrag(ev, wrapper);
+  });
+  wrapper.addEventListener('pointermove', onDragMove);
+  wrapper.addEventListener('pointerup', onDragEnd);
+  wrapper.addEventListener('lostpointercapture', onDragLost);
+  wrapper.addEventListener('contextmenu', (ev) => ev.preventDefault());
+
+  handle.addEventListener('dblclick', async () => {
+    let target = 'players';
+    try { target = game.settings.get(MODULE_ID, 'pinTarget'); } catch (_) {}
+    pinApp(target);
+    applyUiScale();
+    try {
+      await game.settings.set(MODULE_ID, 'pinned', true);
+      await game.settings.set(MODULE_ID, 'pinTarget', target);
+      await game.settings.set(MODULE_ID, 'position', { x: null, y: null });
+    } catch (e) {
+      console.warn(`${MODULE_ID} | Failed to save pin state:`, e);
+    }
   });
 
   container.append(sun, slider, moon);
@@ -579,11 +713,12 @@ function createDayNightSlider() {
   document.body.appendChild(wrapper);
 
   const isPinned = game.settings.get(MODULE_ID, 'pinned');
+  const pinTarget = game.settings.get(MODULE_ID, 'pinTarget');
 
   ensureSpacerInFlow();
 
   if (isPinned) {
-    pinApp();
+    pinApp(pinTarget);
   } else {
     const saved = game.settings.get(MODULE_ID, 'position');
     if (saved.x != null && saved.y != null) {
@@ -628,7 +763,8 @@ function createDayNightSlider() {
     _resizeObserver = new ResizeObserver(() => {
       try {
         updateSliderWidth();
-        if (game.settings.get(MODULE_ID, 'pinned')) {
+        if (game.settings.get(MODULE_ID, 'pinned') &&
+            game.settings.get(MODULE_ID, 'pinTarget') === 'players') {
           ensureSpacerInFlow();
           syncWrapperToSpacer();
         }
@@ -639,16 +775,67 @@ function createDayNightSlider() {
     _resizeObserver.observe(playersForObserver);
   }
 
+  const sidebarEl = document.getElementById('sidebar');
+  if (sidebarEl) {
+    let _pushedBySidebar = false;
+    _sidebarObserver = new ResizeObserver(() => {
+      try {
+        if (!wrapperElement?.isConnected) return;
+        if (game.settings.get(MODULE_ID, 'pinned')) return;
+        const wr = wrapperElement.getBoundingClientRect();
+        const sr = sidebarEl.getBoundingClientRect();
+        if (wr.right > sr.left && sr.width > 100) {
+          _pushedBySidebar = true;
+          wrapperElement.style.left = `${sr.left - wr.width}px`;
+          wrapperElement.style.bottom = '';
+        } else if (_pushedBySidebar && sr.width <= 100) {
+          _pushedBySidebar = false;
+          const saved = game.settings.get(MODULE_ID, 'position');
+          if (saved.x != null) {
+            wrapperElement.style.left = `${saved.x}px`;
+          }
+        }
+      } catch (e) {
+        console.warn(`${MODULE_ID} | Sidebar observer failed:`, e);
+      }
+    });
+    _sidebarObserver.observe(sidebarEl);
+  }
+
+  const sceneNavEl = document.getElementById('scene-navigation');
+  if (sceneNavEl) {
+    _sceneNavObserver = new MutationObserver(() => {
+      try {
+        if (!wrapperElement?.isConnected) return;
+        if (!game.settings.get(MODULE_ID, 'pinned')) return;
+        if (game.settings.get(MODULE_ID, 'pinTarget') !== 'scene') return;
+        syncWrapperToSceneAnchor();
+      } catch (e) {
+        console.warn(`${MODULE_ID} | Scene nav observer failed:`, e);
+      }
+    });
+    _sceneNavObserver.observe(sceneNavEl, { attributes: true, attributeFilter: ['class'] });
+  }
+
   _windowResizeHandler = () => {
     try {
       if (!wrapperElement?.isConnected) return;
       if (game.settings.get(MODULE_ID, 'pinned')) {
-        syncWrapperToSpacer();
+        const target = game.settings.get(MODULE_ID, 'pinTarget');
+        if (target === 'scene') {
+          syncWrapperToSceneAnchor();
+        } else {
+          syncWrapperToSpacer();
+        }
       } else {
         const rect = wrapperElement.getBoundingClientRect();
         const vw = window.innerWidth;
         const vh = window.innerHeight;
-        const clampedX = Math.max(0, Math.min(rect.left, vw - rect.width));
+        const uiScale = parseFloat(
+          getComputedStyle(_uiScaleEl || document.documentElement)
+            .getPropertyValue('--ui-scale')
+        ) || 1;
+        const clampedX = Math.max(15 * uiScale, Math.min(rect.left, vw - rect.width));
         const clampedY = Math.max(0, Math.min(rect.top, vh - rect.height));
         if (clampedX !== rect.left || clampedY !== rect.top) {
           wrapperElement.style.left = `${clampedX}px`;
