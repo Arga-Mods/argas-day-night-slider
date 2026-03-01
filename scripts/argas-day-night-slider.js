@@ -87,7 +87,6 @@ Hooks.once('init', () => {
     default: 'players'
   });
 
-  // Inject CSS once; it never changes between scenes.
   const style = document.createElement('style');
   style.dataset.darknessStyle = 'true';
   style.textContent = `
@@ -250,9 +249,6 @@ function getPlayersPinAnchor() {
   );
 }
 
-// The spacer is created detached and inserted into the DOM via
-// insertAdjacentElement('beforebegin', ...) which works for both
-// attached and detached elements.
 function ensureSpacerInFlow() {
   if (!spacerElement) return;
   const anchor = getPlayersPinAnchor();
@@ -400,7 +396,6 @@ function snapPosition(x, y, wrapperW, wrapperH) {
   if (Math.abs(y) < SNAP_THRESHOLD)                   { sy = 0; bestDy = 0; }
   if (Math.abs(y + wrapperH - vh) < SNAP_THRESHOLD)   { sy = vh - wrapperH; bestDy = 0; }
 
-  // Snap line: right edge of left toolbar (column 2), top half of screen
   if (y + wrapperH > 0 && y < vh / 2) {
     const col2 = document.getElementById('ui-left-column-2')
       || document.getElementById('ui-left-column-1');
@@ -675,7 +670,6 @@ function createDayNightSlider() {
     }
   }
 
-  // Left-click drag on handle
   handle.addEventListener('pointerdown', (ev) => {
     if (ev.button !== 0) return;
     startDrag(ev, handle);
@@ -684,7 +678,6 @@ function createDayNightSlider() {
   handle.addEventListener('pointerup', onDragEnd);
   handle.addEventListener('lostpointercapture', onDragLost);
 
-  // Right-click drag anywhere on wrapper
   wrapper.addEventListener('pointerdown', (ev) => {
     if (ev.button !== 2) return;
     startDrag(ev, wrapper);
