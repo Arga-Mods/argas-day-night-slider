@@ -1,7 +1,7 @@
 # Arga's Day-Night Slider  (Foundry VTT, Version 13)
 
-This is a system-agnostic, very lightweight GM module for quick and easy adjustment of canvas brightness.
-The widget can be freely repositioned by simply dragging it, and it remembers its last position on restart.
+This is a system-agnostic, very lightweight GM module for quick and easy adjustment of canvas brightness.  
+The widget can be freely repositioned by simply dragging it, and it remembers its last position on restart.  
 The widget can also be docked to the Active Players window or the Scene Navigation bar, so it moves along when these panels expand. 
 
 <p align="center">
@@ -10,7 +10,7 @@ The widget can also be docked to the Active Players window or the Scene Navigati
   <img src="screenshots/dock_scene.png" alt="Docked to Active Players" height="300">
 </p>
 
-Otherwise, when being repositioned, it will try to snap to the hotbar, the sidebars, or the edge of the canvas.
+Otherwise, when being repositioned, it will try to snap to the hotbar, the sidebars, or the edge of the canvas.  
 When the UI scaling or fading settings are changed, the widget automatically adapts.
 
 ## Adjusting Brightness
