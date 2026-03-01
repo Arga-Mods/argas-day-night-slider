@@ -1,4 +1,4 @@
-# Arga's Day-Night Slider
+# Arga's Day-Night Slider  (Foundry VTT, Version 13)
 
 This is a system-agnostic, very lightweight GM module for quick and easy adjustment of canvas brightness.
 
@@ -10,7 +10,7 @@ When the UI scaling or fading settings are changed, the widget automatically ada
 
 <p align="center">
   <img src="screenshots/dock_scene.png" alt="Docked to Scene Navigation" height="300">
-  &nbsp;&nbsp;
+  &nbsp;&nbsp;<em>or</em>&nbsp;&nbsp;
   <img src="screenshots/dock_players.png" alt="Docked to Active Players" height="300">
 </p>
 
