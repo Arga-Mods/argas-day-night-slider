@@ -16,6 +16,15 @@ let _uiScaleEl = null;
 let _windowResizeHandler = null;
 let _snapTargetCache = null;
 let _snapTargetCacheTimer = null;
+let _pushedBySidebar = false;
+let _snappedToSidebar = false;
+let _isRespondingToSiblingMove = false; // Verhindert Endlosschleifen beim Widget-zu-Widget-Sync.
+let _isDragging = false; // Module-level damit sync-Funktionen darauf zugreifen können.
+let _justDocked = false; // Unterdrückt Event-Dispatch direkt nach eigenem Dock-Vorgang.
+// Merkt sich den dockTarget des Benny Panels zum Zeitpunkt des Andockens.
+// Nur wenn Benny seinen Target ÄNDERT, wird die Verbindung getrennt.
+// null = kein aktives Widget-zu-Widget-Docking (→ altes Verhalten beibehalten).
+let _lastKnownBennyTarget = null;
 
 function cleanupListenersAndObservers() {
   clearTimeout(_debounceTimer);
@@ -23,6 +32,9 @@ function cleanupListenersAndObservers() {
   clearTimeout(_snapTargetCacheTimer);
   _snapTargetCacheTimer = null;
   _snapTargetCache = null;
+  _pushedBySidebar = false;
+  _snappedToSidebar = false;
+  _lastKnownBennyTarget = null;
   if (_resizeObserver) {
     _resizeObserver.disconnect();
     _resizeObserver = null;
@@ -87,6 +99,7 @@ Hooks.once('init', () => {
     default: 'players'
   });
 
+  // Inject CSS once; it never changes between scenes.
   const style = document.createElement('style');
   style.dataset.darknessStyle = 'true';
   style.textContent = `
@@ -249,6 +262,9 @@ function getPlayersPinAnchor() {
   );
 }
 
+// The spacer is created detached and inserted into the DOM via
+// insertAdjacentElement('beforebegin', ...) which works for both
+// attached and detached elements.
 function ensureSpacerInFlow() {
   if (!spacerElement) return;
   const anchor = getPlayersPinAnchor();
@@ -267,6 +283,10 @@ function syncWrapperToSpacer() {
   wrapperElement.style.top = '';
   wrapperElement.style.bottom = `${window.innerHeight - sr.top}px`;
   wrapperElement.style.transformOrigin = 'left bottom';
+
+  if (!_isRespondingToSiblingMove && !_isDragging && !_justDocked) {
+    window.dispatchEvent(new CustomEvent('argas:widgetMoved', { detail: { source: MODULE_ID } }));
+  }
 }
 
 function syncWrapperToSceneAnchor() {
@@ -279,6 +299,32 @@ function syncWrapperToSceneAnchor() {
   wrapperElement.style.top = `${ar.bottom}px`;
   wrapperElement.style.bottom = '';
   wrapperElement.style.transformOrigin = 'left top';
+
+  if (!_isRespondingToSiblingMove && !_isDragging && !_justDocked) {
+    window.dispatchEvent(new CustomEvent('argas:widgetMoved', { detail: { source: MODULE_ID } }));
+  }
+}
+
+function syncWrapperToBennyPanel(position) {
+  if (!wrapperElement) return;
+  const benny = window.ArgasMods?.bennyPanel;
+  if (!benny?.isConnected) return;
+
+  const br = benny.getBoundingClientRect();
+  wrapperElement.style.left = `${br.left}px`;
+  if (position === 'above') {
+    wrapperElement.style.bottom = `${window.innerHeight - br.top + 5}px`;
+    wrapperElement.style.top = '';
+    wrapperElement.style.transformOrigin = 'left bottom';
+  } else {
+    wrapperElement.style.top = `${br.bottom + 5}px`;
+    wrapperElement.style.bottom = '';
+    wrapperElement.style.transformOrigin = 'left top';
+  }
+
+  if (!_isRespondingToSiblingMove && !_isDragging && !_justDocked) {
+    window.dispatchEvent(new CustomEvent('argas:widgetMoved', { detail: { source: MODULE_ID } }));
+  }
 }
 
 function pinApp(target = 'players') {
@@ -291,6 +337,10 @@ function pinApp(target = 'players') {
 
   if (target === 'scene') {
     syncWrapperToSceneAnchor();
+  } else if (target === 'widget-benny-above') {
+    syncWrapperToBennyPanel('above');
+  } else if (target === 'widget-benny-below') {
+    syncWrapperToBennyPanel('below');
   } else {
     if (!spacerElement) return false;
     const anchor = getPlayersPinAnchor();
@@ -330,11 +380,30 @@ function getScenePinAnchor() {
 }
 
 function computePinZone(clientX, clientY) {
+  // Benny Panel Widget zuerst prüfen (höhere Priorität als native Dock-Ziele).
+  const benny = window.ArgasMods?.bennyPanel;
+  if (benny?.isConnected) {
+    let bennyDockedToDns = false;
+    try {
+      const dt = game.settings.get('argas-benny-and-wound-panel-swade', 'dockTarget') ?? '';
+      bennyDockedToDns = dt.startsWith('widget-dns');
+    } catch (_) {}
+
+    if (!bennyDockedToDns) {
+      const br = benny.getBoundingClientRect();
+      const nearX = clientX >= br.left - 80 && clientX <= br.right + 80;
+      const nearY = clientY >= br.top  - 80 && clientY <= br.bottom + 80;
+      if (nearX && nearY) {
+        return clientY < (br.top + br.bottom) / 2 ? 'widget-benny-above' : 'widget-benny-below';
+      }
+    }
+  }
+
   const playersAnchor = getPlayersPinAnchor();
   if (playersAnchor) {
     const rect = playersAnchor.getBoundingClientRect();
-    if (clientX > rect.left && clientX < rect.left + rect.width &&
-        clientY > rect.top - 80 && clientY < rect.top + 80) {
+    if (clientX < rect.left + rect.width &&
+        clientY > rect.top - 80) {
       return 'players';
     }
   }
@@ -342,8 +411,8 @@ function computePinZone(clientX, clientY) {
   const sceneAnchor = getScenePinAnchor();
   if (sceneAnchor) {
     const rect = sceneAnchor.getBoundingClientRect();
-    if (clientX > rect.left - 40 && clientX < rect.right + 40 &&
-        clientY > rect.bottom - 40 && clientY < rect.bottom + 80) {
+    if (clientX < rect.right + 40 &&
+        clientY < rect.bottom + 80) {
       return 'scene';
     }
   }
@@ -396,6 +465,7 @@ function snapPosition(x, y, wrapperW, wrapperH) {
   if (Math.abs(y) < SNAP_THRESHOLD)                   { sy = 0; bestDy = 0; }
   if (Math.abs(y + wrapperH - vh) < SNAP_THRESHOLD)   { sy = vh - wrapperH; bestDy = 0; }
 
+  // Snap line: right edge of left toolbar (column 2), top half of screen
   if (y + wrapperH > 0 && y < vh / 2) {
     const col2 = document.getElementById('ui-left-column-2')
       || document.getElementById('ui-left-column-1');
@@ -547,7 +617,6 @@ function createDayNightSlider() {
     el.addEventListener('wheel', onWheel, { passive: false, capture: true });
   }
 
-  let isDragging = false;
   let dragOffsetX = 0;
   let dragOffsetY = 0;
   let wasPinnedAtStart = false;
@@ -557,12 +626,14 @@ function createDayNightSlider() {
   let _dragCaptureTarget = null;
 
   function startDrag(ev, captureTarget) {
-    isDragging = true;
+    _isDragging = true;
     _dragCaptureTarget = captureTarget;
     wasPinnedAtStart = wrapper.classList.contains('dns-pinned');
     try { wasPinTargetAtStart = game.settings.get(MODULE_ID, 'pinTarget'); } catch (_) {}
     hasUnpinnedOnThisDrag = false;
     inPinZone = false;
+    _snappedToSidebar = false;
+    _pushedBySidebar = false;
 
     const rect = wrapper.getBoundingClientRect();
     dragOffsetX = ev.clientX - rect.left;
@@ -575,7 +646,7 @@ function createDayNightSlider() {
   }
 
   function onDragMove(ev) {
-    if (!isDragging) return;
+    if (!_isDragging) return;
 
     if (wasPinnedAtStart && !hasUnpinnedOnThisDrag) {
       const rect = wrapper.getBoundingClientRect();
@@ -593,6 +664,10 @@ function createDayNightSlider() {
     if (inPinZone) {
       if (inPinZone === 'scene') {
         syncWrapperToSceneAnchor();
+      } else if (inPinZone === 'widget-benny-above') {
+        syncWrapperToBennyPanel('above');
+      } else if (inPinZone === 'widget-benny-below') {
+        syncWrapperToBennyPanel('below');
       } else {
         syncWrapperToSpacer();
       }
@@ -616,8 +691,8 @@ function createDayNightSlider() {
   }
 
   async function onDragEnd(ev) {
-    if (!isDragging) return;
-    isDragging = false;
+    if (!_isDragging) return;
+    _isDragging = false;
     wrapper.classList.remove('dns-dragging');
     wrapper.style.cursor = '';
     wrapper.classList.remove('dns-jiggling');
@@ -627,7 +702,16 @@ function createDayNightSlider() {
     try {
       if (droppedInPinZone) {
         const target = typeof droppedInPinZone === 'string' ? droppedInPinZone : 'players';
+        _justDocked = true;
         pinApp(target);
+        _justDocked = false;
+        // Benny-Docking: aktuellen dockTarget merken, bevor async-Saves
+        // potenzielle argas:widgetMoved Events auslösen können.
+        if (target === 'widget-benny-above' || target === 'widget-benny-below') {
+          try {
+            _lastKnownBennyTarget = game.settings.get('argas-benny-and-wound-panel-swade', 'dockTarget');
+          } catch (_) { _lastKnownBennyTarget = null; }
+        }
         await game.settings.set(MODULE_ID, 'pinned', true);
         await game.settings.set(MODULE_ID, 'pinTarget', target);
         await game.settings.set(MODULE_ID, 'position', { x: null, y: null });
@@ -645,8 +729,8 @@ function createDayNightSlider() {
   }
 
   async function onDragLost() {
-    if (!isDragging) return;
-    isDragging = false;
+    if (!_isDragging) return;
+    _isDragging = false;
     wrapper.classList.remove('dns-dragging');
     wrapper.style.cursor = '';
     wrapper.classList.remove('dns-jiggling');
@@ -670,6 +754,7 @@ function createDayNightSlider() {
     }
   }
 
+  // Left-click drag on handle
   handle.addEventListener('pointerdown', (ev) => {
     if (ev.button !== 0) return;
     startDrag(ev, handle);
@@ -678,6 +763,7 @@ function createDayNightSlider() {
   handle.addEventListener('pointerup', onDragEnd);
   handle.addEventListener('lostpointercapture', onDragLost);
 
+  // Right-click drag anywhere on wrapper
   wrapper.addEventListener('pointerdown', (ev) => {
     if (ev.button !== 2) return;
     startDrag(ev, wrapper);
@@ -705,8 +791,20 @@ function createDayNightSlider() {
   wrapper.append(handle, container);
   document.body.appendChild(wrapper);
 
+  // In gemeinsamer Registry registrieren, damit andere Arga-Module das Widget finden.
+  (window.ArgasMods ??= {}).dayNightSlider = wrapper;
+
   const isPinned = game.settings.get(MODULE_ID, 'pinned');
   const pinTarget = game.settings.get(MODULE_ID, 'pinTarget');
+
+  // Falls das Widget bereits an das Benny Panel angedockt ist (Session-Persistenz),
+  // merken wir uns Bennys aktuellen dockTarget, damit Routine-Sync-Events
+  // nicht sofort einen Disconnect auslösen.
+  if (isPinned && (pinTarget === 'widget-benny-above' || pinTarget === 'widget-benny-below')) {
+    try {
+      _lastKnownBennyTarget = game.settings.get('argas-benny-and-wound-panel-swade', 'dockTarget');
+    } catch (_) {}
+  }
 
   ensureSpacerInFlow();
 
@@ -770,13 +868,36 @@ function createDayNightSlider() {
 
   const sidebarEl = document.getElementById('sidebar');
   if (sidebarEl) {
-    let _pushedBySidebar = false;
     _sidebarObserver = new ResizeObserver(() => {
       try {
         if (!wrapperElement?.isConnected) return;
         if (game.settings.get(MODULE_ID, 'pinned')) return;
         const wr = wrapperElement.getBoundingClientRect();
         const sr = sidebarEl.getBoundingClientRect();
+
+        // Erkennung: Widget klebt an der Sidebar (einmalig pro Snap)
+        if (!_snappedToSidebar && !_pushedBySidebar &&
+            Math.abs(wr.right - sr.left) < SNAP_THRESHOLD && sr.width > 100) {
+          _snappedToSidebar = true;
+        }
+
+        // Angesnappt: bedingungslos folgen, kein anderer Zweig darf eingreifen
+        if (_snappedToSidebar) {
+          wrapperElement.style.left = `${sr.left - wr.width}px`;
+          wrapperElement.style.bottom = '';
+          // Sidebar vollständig zugeklappt → finale Position speichern
+          if (sr.width <= 60) {
+            _snappedToSidebar = false;
+            const newRect = wrapperElement.getBoundingClientRect();
+            game.settings.set(MODULE_ID, 'position', {
+              x: Math.round(newRect.left),
+              y: Math.round(newRect.top)
+            });
+          }
+          return;
+        }
+
+        // Weggedrückt: Sidebar überlappt das Widget
         if (wr.right > sr.left && sr.width > 100) {
           _pushedBySidebar = true;
           wrapperElement.style.left = `${sr.left - wr.width}px`;
@@ -817,6 +938,10 @@ function createDayNightSlider() {
         const target = game.settings.get(MODULE_ID, 'pinTarget');
         if (target === 'scene') {
           syncWrapperToSceneAnchor();
+        } else if (target === 'widget-benny-above') {
+          syncWrapperToBennyPanel('above');
+        } else if (target === 'widget-benny-below') {
+          syncWrapperToBennyPanel('below');
         } else {
           syncWrapperToSpacer();
         }
@@ -828,8 +953,25 @@ function createDayNightSlider() {
           getComputedStyle(_uiScaleEl || document.documentElement)
             .getPropertyValue('--ui-scale')
         ) || 1;
-        const clampedX = Math.max(15 * uiScale, Math.min(rect.left, vw - rect.width));
-        const clampedY = Math.max(0, Math.min(rect.top, vh - rect.height));
+
+        // Gespeicherte Position als Basis nehmen, damit das Widget
+        // nach einem Resize (z.B. F12 DevTools) zurückkehrt.
+        const saved = game.settings.get(MODULE_ID, 'position');
+        const baseX = saved.x ?? rect.left;
+        const baseY = saved.y ?? rect.top;
+
+        let clampedX = Math.max(15 * uiScale, Math.min(baseX, vw - rect.width));
+        const clampedY = Math.max(0, Math.min(baseY, vh - rect.height));
+
+        // Sidebar-Überlappung prüfen (z.B. bei F12/DevTools)
+        const sb = document.getElementById('sidebar');
+        if (sb) {
+          const sr = sb.getBoundingClientRect();
+          if (clampedX + rect.width > sr.left) {
+            clampedX = sr.left - rect.width;
+          }
+        }
+
         if (clampedX !== rect.left || clampedY !== rect.top) {
           wrapperElement.style.left = `${clampedX}px`;
           wrapperElement.style.top = `${clampedY}px`;
@@ -841,4 +983,42 @@ function createDayNightSlider() {
     }
   };
   window.addEventListener('resize', _windowResizeHandler);
+
+  // Geschwister-Widget-Sync: Wenn ein anderes Arga-Modul sein Widget bewegt,
+  // prüfen ob wir an jenem Widget angedockt sind und ggf. nachziehen.
+  window.addEventListener('argas:widgetMoved', (ev) => {
+    if (ev.detail?.source === MODULE_ID) return;
+    if (!wrapperElement?.isConnected) return;
+    if (!game.settings.get(MODULE_ID, 'pinned')) return;
+    const target = game.settings.get(MODULE_ID, 'pinTarget');
+    if (target === 'widget-benny-above' || target === 'widget-benny-below') {
+      const bennyTarget = ev.detail?.dockTarget ?? '';
+      if (bennyTarget.startsWith('widget-dns')) {
+        // Benny ist an uns angedockt → folgen und neuen Target merken.
+        _lastKnownBennyTarget = bennyTarget;
+        _isRespondingToSiblingMove = true;
+        syncWrapperToBennyPanel(target === 'widget-benny-above' ? 'above' : 'below');
+        _isRespondingToSiblingMove = false;
+      } else if (_lastKnownBennyTarget !== null && bennyTarget === _lastKnownBennyTarget) {
+        // Benny ist noch am selben Ziel wie beim Andocken → nur folgen, nicht trennen.
+        // Dies verhindert, dass Routine-Sync-Events (ResizeObserver, renderPlayers)
+        // einen Disconnect auslösen, obwohl Benny sich gar nicht bewegt hat.
+        _isRespondingToSiblingMove = true;
+        syncWrapperToBennyPanel(target === 'widget-benny-above' ? 'above' : 'below');
+        _isRespondingToSiblingMove = false;
+      } else {
+        // Benny hat seinen Target geändert (oder _lastKnownBennyTarget ist null = Legacy)
+        // → Verbindung trennen.
+        _lastKnownBennyTarget = null;
+        game.settings.set(MODULE_ID, 'pinned', false);
+        game.settings.set(MODULE_ID, 'position', {
+          x: Math.round(wrapperElement.getBoundingClientRect().left),
+          y: Math.round(wrapperElement.getBoundingClientRect().top)
+        });
+        wrapperElement.classList.remove('dns-pinned');
+        wrapperElement.style.bottom = '';
+        return;
+      }
+    }
+  });
 }

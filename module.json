@@ -2,7 +2,7 @@
     "id": "argas-day-night-slider",
     "title": "Arga's Day-Night Slider",
     "description": "Slider and buttons to control the brightness of a scene.",
-    "version": "13.0.2",
+    "version": "13.0.3",
     "authors": [
         {
             "name": "Arga",
@@ -14,11 +14,10 @@
     "changelog": "https://github.com/Arga-Mods/argas-day-night-slider/releases",
     "readme": "https://github.com/Arga-Mods/argas-day-night-slider/blob/main/README.md",
     "manifest": "https://github.com/Arga-Mods/argas-day-night-slider/releases/latest/download/module.json",
-    "download": "https://github.com/Arga-Mods/argas-day-night-slider/releases/download/13.0.2/argas-day-night-slider.zip",
+    "download": "https://github.com/Arga-Mods/argas-day-night-slider/releases/download/13.0.3/argas-day-night-slider.zip",
     "compatibility": {
         "minimum": "13",
-        "verified": "13",
-        "maximum": "13"
+        "verified": "13"
     },
     "esmodules": [
         "scripts/argas-day-night-slider.js"
