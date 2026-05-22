@@ -55,4 +55,4 @@ Bug reports and incompatibility reports with other modules are welcome, but plea
 
 ---
 
-*Enjoy — Arga*
+<p align="center"><em>Enjoy — Arga</em></p>
