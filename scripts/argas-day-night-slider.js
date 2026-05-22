@@ -14,6 +14,7 @@ let _mutationObserver = null;
 let _debounceTimer = null;
 let _uiScaleEl = null;
 let _windowResizeHandler = null;
+let _widgetMovedHandler = null;
 let _snapTargetCache = null;
 let _snapTargetCacheTimer = null;
 let _pushedBySidebar = false;
@@ -54,6 +55,10 @@ function cleanupListenersAndObservers() {
   if (_windowResizeHandler) {
     window.removeEventListener('resize', _windowResizeHandler);
     _windowResizeHandler = null;
+  }
+  if (_widgetMovedHandler) {
+    window.removeEventListener('argas:widgetMoved', _widgetMovedHandler);
+    _widgetMovedHandler = null;
   }
 }
 
@@ -99,7 +104,7 @@ Hooks.once('init', () => {
     default: 'players'
   });
 
-  // Inject CSS once; it never changes between scenes.
+  // CSS einmalig injizieren; es ändert sich zwischen Szenen nicht.
   const style = document.createElement('style');
   style.dataset.darknessStyle = 'true';
   style.textContent = `
@@ -128,7 +133,7 @@ Hooks.once('init', () => {
     .dns-wrapper:hover .dns-handle { opacity: 1.0; }
     .dns-container { display: flex; align-items: center; gap: 5px; }
     .dns-icon {
-      cursor: pointer; transform: translateY(0px) translateX(-4px);
+      cursor: pointer; transform: translateX(-4px);
       border: none; outline: none; box-shadow: none;
     }
     .dns-slider {
@@ -262,9 +267,8 @@ function getPlayersPinAnchor() {
   );
 }
 
-// The spacer is created detached and inserted into the DOM via
-// insertAdjacentElement('beforebegin', ...) which works for both
-// attached and detached elements.
+// insertAdjacentElement('beforebegin', ...) funktioniert für angehängte
+// wie auch losgelöste Spacer-Elemente — daher hier ohne Zustandsprüfung.
 function ensureSpacerInFlow() {
   if (!spacerElement) return;
   const anchor = getPlayersPinAnchor();
@@ -465,7 +469,7 @@ function snapPosition(x, y, wrapperW, wrapperH) {
   if (Math.abs(y) < SNAP_THRESHOLD)                   { sy = 0; bestDy = 0; }
   if (Math.abs(y + wrapperH - vh) < SNAP_THRESHOLD)   { sy = vh - wrapperH; bestDy = 0; }
 
-  // Snap line: right edge of left toolbar (column 2), top half of screen
+  // Snap-Linie: rechte Kante der linken Werkzeugleiste (Spalte 2), obere Bildschirmhälfte
   if (y + wrapperH > 0 && y < vh / 2) {
     const col2 = document.getElementById('ui-left-column-2')
       || document.getElementById('ui-left-column-1');
@@ -623,11 +627,9 @@ function createDayNightSlider() {
   let wasPinTargetAtStart = 'players';
   let hasUnpinnedOnThisDrag = false;
   let inPinZone = false;
-  let _dragCaptureTarget = null;
 
   function startDrag(ev, captureTarget) {
     _isDragging = true;
-    _dragCaptureTarget = captureTarget;
     wasPinnedAtStart = wrapper.classList.contains('dns-pinned');
     try { wasPinTargetAtStart = game.settings.get(MODULE_ID, 'pinTarget'); } catch (_) {}
     hasUnpinnedOnThisDrag = false;
@@ -639,7 +641,7 @@ function createDayNightSlider() {
     dragOffsetX = ev.clientX - rect.left;
     dragOffsetY = ev.clientY - rect.top;
 
-    try { captureTarget.setPointerCapture(ev.pointerId); } catch (_) { /* ignored */ }
+    try { captureTarget.setPointerCapture(ev.pointerId); } catch (_) { /* ignoriert */ }
     wrapper.classList.add('dns-dragging');
     wrapper.style.cursor = 'grabbing';
     ev.preventDefault();
@@ -754,7 +756,6 @@ function createDayNightSlider() {
     }
   }
 
-  // Left-click drag on handle
   handle.addEventListener('pointerdown', (ev) => {
     if (ev.button !== 0) return;
     startDrag(ev, handle);
@@ -763,7 +764,6 @@ function createDayNightSlider() {
   handle.addEventListener('pointerup', onDragEnd);
   handle.addEventListener('lostpointercapture', onDragLost);
 
-  // Right-click drag anywhere on wrapper
   wrapper.addEventListener('pointerdown', (ev) => {
     if (ev.button !== 2) return;
     startDrag(ev, wrapper);
@@ -986,7 +986,9 @@ function createDayNightSlider() {
 
   // Geschwister-Widget-Sync: Wenn ein anderes Arga-Modul sein Widget bewegt,
   // prüfen ob wir an jenem Widget angedockt sind und ggf. nachziehen.
-  window.addEventListener('argas:widgetMoved', (ev) => {
+  // Als benannter Handler registriert, damit cleanupListenersAndObservers()
+  // ihn wieder entfernen kann (sonst akkumuliert er bei jedem canvasReady).
+  _widgetMovedHandler = (ev) => {
     if (ev.detail?.source === MODULE_ID) return;
     if (!wrapperElement?.isConnected) return;
     if (!game.settings.get(MODULE_ID, 'pinned')) return;
@@ -1020,5 +1022,6 @@ function createDayNightSlider() {
         return;
       }
     }
-  });
+  };
+  window.addEventListener('argas:widgetMoved', _widgetMovedHandler);
 }
