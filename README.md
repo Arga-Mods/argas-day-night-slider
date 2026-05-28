@@ -58,7 +58,7 @@ Bug reports and incompatibility reports with other modules are welcome, but plea
 ## My Other Modules
 If you like ***Arga's Day-Night Slider***, feel free to check out my other modules as well:
 
-* **[Arga's Dice Roller](https://github.com/Arga-Mods/argas-dice-roller)** – A system-agnostic dice module with a Fate Roll function and additional features and dice mechanics for the Savage Worlds game system, such as Critical Failures, Benny rerolls, Request Rolls, and Dramatic Tasks.
+* **[Arga's Dice Roller](https://github.com/Arga-Mods/argas-dice-roller)** – A ***system-agnostic*** dice module with a Fate Roll function and additional features and dice mechanics for the Savage Worlds game system, such as Critical Failures, Benny rerolls, Request Rolls, and Dramatic Tasks.
 * **[Arga's Benny & Wound Panel (SWADE)](https://github.com/Arga-Mods/argas-benny-and-wound-panel-swade)** – A panel for quick adjustment of Bennies, Wounds, and Fatigue on selected tokens. Designed for Savage Worlds.
   
 ---
