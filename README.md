@@ -52,6 +52,9 @@ There are also several ways to move the widget around:
 
 Bug reports and incompatibility reports with other modules are welcome, but please don't request additional features. This module is intentionally kept small and simple, and that's by design. For extended functionality like time of day, calendars, or moon phases, there are already wonderful other modules available.
 
+## Manifest-URL
+https://github.com/Arga-Mods/argas-day-night-slider/releases/latest/download/module.json
+
 ---
 
 ## My Other Modules
@@ -59,6 +62,7 @@ If you like ***Arga's Day-Night Slider***, feel free to check out my other modul
 
 * **[Arga's Dice Roller](https://github.com/Arga-Mods/argas-dice-roller)** – A ***system-agnostic*** dice module with a Fate Roll function and additional features and dice mechanics for the Savage Worlds game system, such as Critical Failures, Benny rerolls, Request Rolls, and Dramatic Tasks.
 * **[Arga's Benny & Wound Panel (SWADE)](https://github.com/Arga-Mods/argas-benny-and-wound-panel-swade)** – A panel for quick adjustment of Bennies, Wounds, and Fatigue on selected tokens. Designed for Savage Worlds.
+* **[Arga's SWADE Translation (German)](https://github.com/Arga-Mods/argas-swade-translation-german)** - A complete German translation of the English ***SWADE Core Rules*** premium module.
   
 ---
 
