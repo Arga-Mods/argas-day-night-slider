@@ -1,4 +1,14 @@
 # Changelog
+
+## 14.0.2
+- **Fixed — no longer covers Image Hover previews.** The slider used to sit on top of the token
+artwork that the *Image Hover* module shows in the corner of the scene. It is now placed below
+the HUD layer, while still staying above the canvas and the UI bars.
+- **Fixed — the enable/disable setting now takes effect immediately.** Turning the slider off (or
+back on) through the module's client setting previously did nothing until a scene reload.
+- **Fixed — cleanup.** The entry in the shared `ArgasMods` widget registry is now cleared when the
+slider is disabled, so other Arga modules no longer see a stale element.
+
 ## 14.0.1
 - Ensured full compatibility with Foundry VTT v14
 - Fixed: The `argas:widgetMoved` synchronization listener is now properly removed on every scene change instead of being registered repeatedly
