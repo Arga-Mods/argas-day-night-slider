@@ -24,7 +24,7 @@ let _isDragging = false; // Module-level damit sync-Funktionen darauf zugreifen 
 let _justDocked = false; // Unterdrückt Event-Dispatch direkt nach eigenem Dock-Vorgang.
 // Merkt sich den dockTarget des Benny Panels zum Zeitpunkt des Andockens.
 // Nur wenn Benny seinen Target ÄNDERT, wird die Verbindung getrennt.
-// null = kein aktives Widget-zu-Widget-Docking (→ altes Verhalten beibehalten).
+// null = kein aktives Widget-zu-Widget-Docking.
 let _lastKnownBennyTarget = null;
 
 function cleanupListenersAndObservers() {
@@ -77,7 +77,22 @@ Hooks.once('init', () => {
     scope: 'client',
     config: false,
     type: Boolean,
-    default: true
+    default: true,
+    // Client-Settings lösen keinen updateSetting-Hook aus (der feuert nur
+    // für world-scope) — Ein/Aus daher hier über onChange behandeln.
+    onChange: (value) => {
+      if (value) {
+        if (game.user.isGM && canvas?.ready) createDayNightSlider();
+      } else {
+        cleanupListenersAndObservers();
+        wrapperElement?.remove();
+        spacerElement?.remove();
+        wrapperElement = null;
+        spacerElement = null;
+        sliderElement = null;
+        if (window.ArgasMods?.dayNightSlider) window.ArgasMods.dayNightSlider = null;
+      }
+    }
   });
 
   game.settings.register(MODULE_ID, 'position', {
@@ -104,13 +119,14 @@ Hooks.once('init', () => {
     default: 'players'
   });
 
-  // CSS einmalig injizieren; es ändert sich zwischen Szenen nicht.
   const style = document.createElement('style');
   style.dataset.darknessStyle = 'true';
   style.textContent = `
     .dns-wrapper {
       position: fixed;
-      z-index: 100;
+      /* Unter #hud (image-hover hebt den auf 70) und unter Fenstern (100),
+         aber über Canvas (0) und UI-Leisten (30). */
+      z-index: 60;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -183,38 +199,6 @@ Hooks.once('init', () => {
 Hooks.on('canvasReady', () => {
   if (!game.user.isGM || !game.settings.get(MODULE_ID, 'enabled')) return;
   createDayNightSlider();
-});
-
-Hooks.once('ready', () => {
-  const majorVersion = parseInt(game.version);
-  if (majorVersion >= 14) {
-    console.log(`${MODULE_ID} | v14+ compat check:`, {
-      players: !!document.getElementById('players'),
-      playersActive: !!document.getElementById('players-active'),
-      playersInactive: !!document.getElementById('players-inactive'),
-      sidebar: !!document.getElementById('sidebar'),
-      hotbar: !!document.getElementById('hotbar'),
-      navigation: !!document.getElementById('navigation'),
-      controls: !!document.getElementById('controls'),
-      uiScale: getComputedStyle(
-        document.getElementById('ui-top')?.closest('[style*="--ui-scale"]') ?? document.documentElement
-      ).getPropertyValue('--ui-scale')
-    });
-  }
-});
-
-Hooks.on('updateSetting', (setting) => {
-  if (setting.key !== `${MODULE_ID}.enabled`) return;
-  if (setting.value) {
-    createDayNightSlider();
-  } else {
-    cleanupListenersAndObservers();
-    wrapperElement?.remove();
-    spacerElement?.remove();
-    wrapperElement = null;
-    spacerElement = null;
-    sliderElement = null;
-  }
 });
 
 Hooks.on('updateScene', (scene, changes) => {
@@ -797,9 +781,8 @@ function createDayNightSlider() {
   const isPinned = game.settings.get(MODULE_ID, 'pinned');
   const pinTarget = game.settings.get(MODULE_ID, 'pinTarget');
 
-  // Falls das Widget bereits an das Benny Panel angedockt ist (Session-Persistenz),
-  // merken wir uns Bennys aktuellen dockTarget, damit Routine-Sync-Events
-  // nicht sofort einen Disconnect auslösen.
+  // Bei bereits bestehendem Benny-Docking dessen dockTarget übernehmen, damit
+  // Routine-Sync-Events nicht sofort einen Disconnect auslösen.
   if (isPinned && (pinTarget === 'widget-benny-above' || pinTarget === 'widget-benny-below')) {
     try {
       _lastKnownBennyTarget = game.settings.get('argas-benny-and-wound-panel-swade', 'dockTarget');
@@ -875,7 +858,6 @@ function createDayNightSlider() {
         const wr = wrapperElement.getBoundingClientRect();
         const sr = sidebarEl.getBoundingClientRect();
 
-        // Erkennung: Widget klebt an der Sidebar (einmalig pro Snap)
         if (!_snappedToSidebar && !_pushedBySidebar &&
             Math.abs(wr.right - sr.left) < SNAP_THRESHOLD && sr.width > 100) {
           _snappedToSidebar = true;
@@ -897,7 +879,6 @@ function createDayNightSlider() {
           return;
         }
 
-        // Weggedrückt: Sidebar überlappt das Widget
         if (wr.right > sr.left && sr.width > 100) {
           _pushedBySidebar = true;
           wrapperElement.style.left = `${sr.left - wr.width}px`;
@@ -963,7 +944,6 @@ function createDayNightSlider() {
         let clampedX = Math.max(15 * uiScale, Math.min(baseX, vw - rect.width));
         const clampedY = Math.max(0, Math.min(baseY, vh - rect.height));
 
-        // Sidebar-Überlappung prüfen (z.B. bei F12/DevTools)
         const sb = document.getElementById('sidebar');
         if (sb) {
           const sr = sb.getBoundingClientRect();
@@ -984,8 +964,6 @@ function createDayNightSlider() {
   };
   window.addEventListener('resize', _windowResizeHandler);
 
-  // Geschwister-Widget-Sync: Wenn ein anderes Arga-Modul sein Widget bewegt,
-  // prüfen ob wir an jenem Widget angedockt sind und ggf. nachziehen.
   // Als benannter Handler registriert, damit cleanupListenersAndObservers()
   // ihn wieder entfernen kann (sonst akkumuliert er bei jedem canvasReady).
   _widgetMovedHandler = (ev) => {
@@ -996,20 +974,20 @@ function createDayNightSlider() {
     if (target === 'widget-benny-above' || target === 'widget-benny-below') {
       const bennyTarget = ev.detail?.dockTarget ?? '';
       if (bennyTarget.startsWith('widget-dns')) {
-        // Benny ist an uns angedockt → folgen und neuen Target merken.
+        // Benny ist an diesem Widget angedockt → folgen und neuen Target merken.
         _lastKnownBennyTarget = bennyTarget;
         _isRespondingToSiblingMove = true;
         syncWrapperToBennyPanel(target === 'widget-benny-above' ? 'above' : 'below');
         _isRespondingToSiblingMove = false;
       } else if (_lastKnownBennyTarget !== null && bennyTarget === _lastKnownBennyTarget) {
         // Benny ist noch am selben Ziel wie beim Andocken → nur folgen, nicht trennen.
-        // Dies verhindert, dass Routine-Sync-Events (ResizeObserver, renderPlayers)
-        // einen Disconnect auslösen, obwohl Benny sich gar nicht bewegt hat.
+        // Sonst lösen Routine-Sync-Events (ResizeObserver, renderPlayers) einen
+        // Disconnect aus, obwohl Benny sich gar nicht bewegt hat.
         _isRespondingToSiblingMove = true;
         syncWrapperToBennyPanel(target === 'widget-benny-above' ? 'above' : 'below');
         _isRespondingToSiblingMove = false;
       } else {
-        // Benny hat seinen Target geändert (oder _lastKnownBennyTarget ist null = Legacy)
+        // Benny hat seinen Target geändert (oder _lastKnownBennyTarget ist null)
         // → Verbindung trennen.
         _lastKnownBennyTarget = null;
         game.settings.set(MODULE_ID, 'pinned', false);
